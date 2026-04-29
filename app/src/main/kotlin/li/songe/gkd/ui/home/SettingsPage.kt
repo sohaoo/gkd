@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -57,12 +58,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import li.songe.gkd.MainActivity
 import li.songe.gkd.R
-import li.songe.gkd.app
+import li.songe.gkd.permission.canDrawOverlaysState
+import li.songe.gkd.permission.foregroundServiceSpecialUseState
 import li.songe.gkd.permission.ignoreBatteryOptimizationsState
+import li.songe.gkd.permission.notificationState
 import li.songe.gkd.permission.requiredPermission
-import li.songe.gkd.permission.writeSecureSettingsState
-import li.songe.gkd.service.A11yService
 import li.songe.gkd.service.StatusService
+import li.songe.gkd.service.TrackService
 import li.songe.gkd.service.fixRestartAutomatorService
 import li.songe.gkd.shizuku.shizukuContextFlow
 import li.songe.gkd.store.storeFlow
@@ -76,6 +78,7 @@ import li.songe.gkd.ui.component.PerfIcon
 import li.songe.gkd.ui.component.PerfIconButton
 import li.songe.gkd.ui.component.PerfTopAppBar
 import li.songe.gkd.ui.component.SettingItem
+import li.songe.gkd.ui.component.TextListDialog
 import li.songe.gkd.ui.component.TextMenu
 import li.songe.gkd.ui.component.TextSwitch
 import li.songe.gkd.ui.component.autoFocus
@@ -89,12 +92,14 @@ import li.songe.gkd.ui.style.iconTextSize
 import li.songe.gkd.ui.style.itemHorizontalPadding
 import li.songe.gkd.ui.style.titleItemPadding
 import li.songe.gkd.util.AndroidTarget
+import li.songe.gkd.util.BackupUtils
 import li.songe.gkd.util.DarkThemeOption
 import li.songe.gkd.util.findOption
 import li.songe.gkd.util.launchAsFn
 import li.songe.gkd.util.mapState
-import li.songe.gkd.util.openA11ySettings
 import li.songe.gkd.util.openAppDetailsSettings
+import li.songe.gkd.util.saveFileToDownloads
+import li.songe.gkd.util.shareFile
 import li.songe.gkd.util.throttle
 import li.songe.gkd.util.toast
 
@@ -133,7 +138,7 @@ fun useSettingsPage(): ScaffoldExt {
                             }
                             mainVm.dialogFlow.updateDialogOptions(
                                 title = "文案规则",
-                                text = $$"触发文案支持变量替换，规则如下\n${1} 子规则名称\n${2} 规则组名称\n${3} 触发次数\n\n示例模板\n${1}/${2}/${3}\n\n替换结果\n子规则a/规则组A/3",
+                                text = $$"触发文案支持变量替换，规则如下\n${1} 子规则名称\n${2} 规则名称\n${3} 触发次数\n\n示例模板\n${1}/${2}/${3}\n\n替换结果\n子规则a/规则A/3",
                                 confirmAction = confirmAction,
                                 onDismissRequest = confirmAction,
                             )
@@ -207,7 +212,7 @@ fun useSettingsPage(): ScaffoldExt {
                             }
                             mainVm.dialogFlow.updateDialogOptions(
                                 title = "文案规则",
-                                text = $$"通知文案支持变量替换，规则如下\n${i} 全局规则数\n${k} 应用数\n${u} 应用规则组数\n${n} 触发次数\n\n示例模板\n${i}全局/${k}应用/${u}规则组/${n}触发\n\n替换结果\n0全局/1应用/2规则组/3触发",
+                                text = $$"通知文案支持变量替换，规则如下\n${i} 全局规则数\n${k} 应用数\n${u} 应用规则数\n${n} 触发次数\n\n示例模板\n${i}全局/${k}应用/${u}规则/${n}触发\n\n替换结果\n0全局/1应用/2规则/3触发",
                                 confirmAction = confirmAction,
                                 onDismissRequest = confirmAction,
                             )
@@ -294,48 +299,41 @@ fun useSettingsPage(): ScaffoldExt {
             })
     }
 
-    var showToastSettingsDlg by vm.showToastSettingsDlgFlow.asMutableState()
-    if (showToastSettingsDlg) {
-        AlertDialog(
-            onDismissRequest = { showToastSettingsDlg = false },
-            title = { Text("提示设置") },
-            text = {
-                TextSwitch(
-                    paddingDisabled = true,
-                    title = "系统提示",
-                    subtitle = "系统样式触发提示",
-                    suffix = "查看限制",
-                    onSuffixClick = {
-                        showToastSettingsDlg = false
-                        val confirmAction = {
-                            mainVm.dialogFlow.value = null
-                            showToastSettingsDlg = true
-                        }
-                        mainVm.dialogFlow.updateDialogOptions(
-                            title = "限制说明",
-                            text = "系统 Toast 存在频率限制, 触发过于频繁会被系统强制不显示\n\n如果只使用开屏一类低频率规则可使用系统提示, 否则建议关闭此项使用自定义样式提示",
-                            confirmAction = confirmAction,
-                            onDismissRequest = confirmAction,
-                        )
-                    },
-                    checked = store.useSystemToast,
-                    onCheckedChange = {
-                        storeFlow.value = store.copy(
-                            useSystemToast = it
-                        )
-                    })
-            },
-            confirmButton = {
-                TextButton(onClick = { showToastSettingsDlg = false }) {
-                    Text("关闭")
-                }
-            }
-        )
-    }
 
     var showA11yBlockDlg by vm.showA11yBlockDlgFlow.asMutableState()
     if (showA11yBlockDlg) {
         BlockA11yDialog(onDismissRequest = { showA11yBlockDlg = false })
+    }
+    if (vm.showBackupDlgFlow.collectAsState().value) {
+        TextListDialog(
+            onDismiss = { vm.showBackupDlgFlow.value = false },
+            textList = listOf(
+                "导入备份" to vm.viewModelScope.launchAsFn(Dispatchers.IO) {
+                    val uri = context.pickFile("application/zip")
+                    if (uri != null) {
+                        BackupUtils.importBackUpData(uri)
+                    }
+                },
+                "导出备份" to {
+                    vm.showExportBackupDlgFlow.value = true
+                },
+            )
+        )
+    }
+    if (vm.showExportBackupDlgFlow.collectAsState().value) {
+        TextListDialog(
+            onDismiss = { vm.showExportBackupDlgFlow.value = false },
+            textList = listOf(
+                "分享到其他应用" to vm.viewModelScope.launchAsFn(Dispatchers.IO) {
+                    val file = BackupUtils.exportBackUpData()
+                    context.shareFile(file, "分享备份文件")
+                },
+                "保存到下载" to vm.viewModelScope.launchAsFn(Dispatchers.IO) {
+                    val file = BackupUtils.exportBackUpData()
+                    context.saveFileToDownloads(file)
+                },
+            )
+        )
     }
 
     val scrollKey = rememberSaveable { mutableIntStateOf(0) }
@@ -373,7 +371,7 @@ fun useSettingsPage(): ScaffoldExt {
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
-
+            val showToastSettingsDlg by vm.showToastSettingsDlgFlow.asMutableState()
             TextSwitch(
                 title = "触发提示",
                 subtitle = store.actionToast,
@@ -387,9 +385,10 @@ fun useSettingsPage(): ScaffoldExt {
                         size = 32.dp,
                         iconSize = 20.dp,
                         onClickLabel = "打开提示设置弹窗",
-                        onClick = throttle { showToastSettingsDlg = true },
+                        onClick = { vm.showToastSettingsDlgFlow.update { !it } },
                         id = R.drawable.ic_page_info,
                         contentDescription = "提示设置",
+                        tint = if (showToastSettingsDlg) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                     )
                 },
                 onCheckedChange = {
@@ -397,6 +396,47 @@ fun useSettingsPage(): ScaffoldExt {
                         toastWhenClick = it
                     )
                 })
+
+            AnimatedVisibility(visible = showToastSettingsDlg) {
+                Column {
+                    TextSwitch(
+                        title = "提示样式",
+                        subtitle = "使用系统样式",
+                        suffix = "查看限制",
+                        onSuffixClick = {
+                            mainVm.dialogFlow.updateDialogOptions(
+                                title = "限制说明",
+                                text = "系统 Toast 存在频率限制, 触发过于频繁会被系统强制不显示\n\n如果只使用开屏一类低频率规则可使用系统提示, 否则建议关闭此项使用自定义样式提示",
+                            )
+                        },
+                        checked = store.useSystemToast,
+                        onCheckedChange = {
+                            storeFlow.value = store.copy(
+                                useSystemToast = it
+                            )
+                        })
+                    TextSwitch(
+                        title = "轨迹提示",
+                        subtitle = "显示触发位置信息",
+                        checked = TrackService.isRunning.collectAsState().value,
+                        onCheckedChange = vm.viewModelScope.launchAsFn<Boolean> {
+                            if (it) {
+                                mainVm.dialogFlow.waitResult(
+                                    title = "使用须知",
+                                    text = "开启「轨迹提示」后点击或滑动后会在屏幕上使用悬浮窗绘制轨迹(一段时间后消失)，如果新触摸事件恰好在悬浮窗区域内，可能会被目标应用拒绝，从而导致点击或滑动无响应",
+                                    confirmText = "继续",
+                                )
+                                requiredPermission(context, foregroundServiceSpecialUseState)
+                                requiredPermission(context, notificationState)
+                                requiredPermission(context, canDrawOverlaysState)
+                                TrackService.start()
+                            } else {
+                                TrackService.stop()
+                            }
+                        }
+                    )
+                }
+            }
 
             val subsStatus by vm.subsStatusFlow.collectAsState()
             TextSwitch(
@@ -501,6 +541,9 @@ fun useSettingsPage(): ScaffoldExt {
             SettingItem(title = "高级设置", onClick = {
                 mainVm.navigatePage(AdvancedPageRoute)
             })
+            SettingItem(title = "备份恢复", onClick = {
+                vm.showBackupDlgFlow.value = true
+            })
 
             SettingItem(title = "关于", onClick = {
                 mainVm.navigatePage(AboutRoute)
@@ -517,7 +560,6 @@ private fun BlockA11yDialog(onDismissRequest: () -> Unit) = FullscreenDialog(onD
     val statusRunning by StatusService.isRunning.collectAsState()
     val shizukuContext by shizukuContextFlow.collectAsState()
     val ignoreBatteryOptimizations by ignoreBatteryOptimizationsState.stateFlow.collectAsState()
-    val hasOtherA11y by mainVm.hasOtherA11yFlow.collectAsState()
     val context = LocalActivity.current as MainActivity
     Scaffold(
         topBar = {
@@ -538,7 +580,7 @@ private fun BlockA11yDialog(onDismissRequest: () -> Unit) = FullscreenDialog(onD
             BottomAppBar {
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
-                    enabled = shizukuContext.ok && statusRunning && ignoreBatteryOptimizations && !hasOtherA11y,
+                    enabled = shizukuContext.ok && statusRunning && ignoreBatteryOptimizations,
                     onClick = mainVm.viewModelScope.launchAsFn {
                         onDismissRequest()
                         delay(200)
@@ -566,7 +608,7 @@ private fun BlockA11yDialog(onDismissRequest: () -> Unit) = FullscreenDialog(onD
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     RequiredTextItem(text = "切换服务会造成短暂触摸卡顿，请自行测试后再编辑白名单")
-                    RequiredTextItem(text = "使用其它无障碍应用会导致优化无效，因为无障碍不会被完全关闭")
+                    RequiredTextItem(text = "使用其它无障碍应用可能导致优化无效，可在服务关闭后自行确认")
                     RequiredTextItem(text = "必须确保服务关闭后的持续后台运行，否则会被系统暂停或结束运行导致重启失败")
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -597,25 +639,6 @@ private fun BlockA11yDialog(onDismissRequest: () -> Unit) = FullscreenDialog(onD
                         onClickLabel = "打开忽略电池优化设置页面",
                         onClick = mainVm.viewModelScope.launchAsFn {
                             requiredPermission(context, ignoreBatteryOptimizationsState)
-                        },
-                    )
-                    RequiredTextItem(
-                        text = "关闭其它应用的无障碍",
-                        enabled = hasOtherA11y,
-                        imageVector = if (!hasOtherA11y) PerfIcon.Check else PerfIcon.ArrowForward,
-                        onClick = {
-                            if (writeSecureSettingsState.updateAndGet()) {
-                                if (A11yService.isRunning.value) {
-                                    setOf(A11yService.a11yCn)
-                                } else {
-                                    emptySet()
-                                }.let {
-                                    app.putSecureA11yServices(it)
-                                }
-                                toast("关闭成功")
-                            } else {
-                                openA11ySettings()
-                            }
                         },
                     )
                     RequiredTextItem(

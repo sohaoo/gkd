@@ -26,7 +26,9 @@ class SafePackageManager(private val value: IPackageManager) {
         flags: Int,
         userId: Int = currentUserId,
     ): List<PackageInfo> = safeInvokeShizuku {
-        if (AndroidTarget.TIRAMISU) {
+        if (AndroidTarget.CINNAMON_BUN) {
+            value.getInstalledPackagesV17(flags.toLong(), userId).list
+        } else if (AndroidTarget.TIRAMISU) {
             value.getInstalledPackages(flags.toLong(), userId).list
         } else {
             value.getInstalledPackages(flags, userId).list

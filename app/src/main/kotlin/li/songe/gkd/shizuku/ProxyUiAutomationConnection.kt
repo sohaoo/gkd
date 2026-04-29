@@ -17,7 +17,7 @@ import li.songe.gkd.util.AndroidTarget
 import rikka.shizuku.Shizuku
 
 
-// https://diff.songe.li/?ref=UiAutomationConnection
+// https://diff.songe.li/i/UiAutomationConnection
 class ProxyUiAutomationConnection : IUiAutomationConnection.Stub() {
     companion object {
         private const val INITIAL_FROZEN_ROTATION_UNSPECIFIED = -1
@@ -79,7 +79,7 @@ class ProxyUiAutomationConnection : IUiAutomationConnection.Stub() {
         }
     }
 
-    // https://diff.songe.li/?ref=UiAutomationConnection.takeScreenshot
+    // https://diff.songe.li/i/UiAutomationConnection.takeScreenshot
     override fun takeScreenshot(width: Int, height: Int): Bitmap? {
         synchronized(mLock) {
             throwIfCalledByNotTrustedUidLocked()
@@ -247,19 +247,17 @@ class ProxyUiAutomationConnection : IUiAutomationConnection.Stub() {
     private fun restoreRotationStateLocked() {
         try {
             if (mInitialFrozenRotation != INITIAL_FROZEN_ROTATION_UNSPECIFIED) {
-                if (AndroidTarget.UPSIDE_DOWN_CAKE) {
-                    mWindowManager.freezeRotation(
+                when (HiddenApiType.freezeRotation) {
+                    1 -> mWindowManager.freezeRotation(mInitialFrozenRotation)
+                    2 -> mWindowManager.freezeRotation(
                         mInitialFrozenRotation,
                         "UiAutomationConnection#restoreRotationStateLocked"
                     )
-                } else {
-                    mWindowManager.freezeRotation(mInitialFrozenRotation)
                 }
             } else {
-                if (AndroidTarget.UPSIDE_DOWN_CAKE) {
-                    mWindowManager.thawRotation("UiAutomationConnection#restoreRotationStateLocked")
-                } else {
-                    mWindowManager.thawRotation()
+                when (HiddenApiType.thawRotation) {
+                    1 -> mWindowManager.thawRotation()
+                    2 -> mWindowManager.thawRotation("UiAutomationConnection#restoreRotationStateLocked")
                 }
             }
         } catch (_: RemoteException) {

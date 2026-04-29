@@ -1,15 +1,12 @@
 package li.songe.gkd.ui.home
 
-import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,8 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,7 +24,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -46,20 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dylanc.activityresult.launcher.launchForResult
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
-import li.songe.gkd.MainActivity
 import li.songe.gkd.R
 import li.songe.gkd.data.Value
-import li.songe.gkd.data.importData
 import li.songe.gkd.db.DbSet
 import li.songe.gkd.store.storeFlow
 import li.songe.gkd.store.switchStoreEnableMatch
@@ -70,14 +56,15 @@ import li.songe.gkd.ui.component.AnimationFloatingActionButton
 import li.songe.gkd.ui.component.PerfIcon
 import li.songe.gkd.ui.component.PerfIconButton
 import li.songe.gkd.ui.component.PerfTopAppBar
+import li.songe.gkd.ui.component.ScaffoldDialog
 import li.songe.gkd.ui.component.SubsItemCard
 import li.songe.gkd.ui.component.TextMenu
+import li.songe.gkd.ui.component.TextSwitch
 import li.songe.gkd.ui.component.usePinnedScrollBehaviorState
 import li.songe.gkd.ui.component.waitResult
 import li.songe.gkd.ui.share.ListPlaceholder
 import li.songe.gkd.ui.share.LocalMainViewModel
 import li.songe.gkd.ui.style.EmptyHeight
-import li.songe.gkd.ui.style.itemVerticalPadding
 import li.songe.gkd.util.LOCAL_SUBS_ID
 import li.songe.gkd.util.ShortUrlSet
 import li.songe.gkd.util.UpdateTimeOption
@@ -100,7 +87,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun useSubsManagePage(): ScaffoldExt {
-    val context = LocalActivity.current as MainActivity
     val mainVm = LocalMainViewModel.current
 
     val vm = viewModel<HomeVm>()
@@ -135,60 +121,25 @@ fun useSubsManagePage(): ScaffoldExt {
 
     var showSettingsDlg by remember { mutableStateOf(false) }
     if (showSettingsDlg) {
-        AlertDialog(
-            onDismissRequest = { showSettingsDlg = false },
-            title = { Text("订阅设置") },
-            text = {
+        ScaffoldDialog(
+            onClose = { showSettingsDlg = false },
+            title = "订阅设置",
+            content = {
                 val store by storeFlow.collectAsState()
-                Column {
-                    TextMenu(
-                        modifier = Modifier.padding(0.dp, itemVerticalPadding),
-                        title = "更新订阅",
-                        option = UpdateTimeOption.objects.findOption(store.updateSubsInterval)
-                    ) {
-                        storeFlow.update { s -> s.copy(updateSubsInterval = it.value) }
-                    }
-                    val updateValue = throttle {
-                        storeFlow.update { it.copy(subsPowerWarn = !it.subsPowerWarn) }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .padding(0.dp, itemVerticalPadding)
-                            .clickable(
-                                onClickLabel = if (store.subsPowerWarn) "关闭警告" else "开启警告",
-                                onClick = updateValue
-                            )
-                            .semantics(mergeDescendants = true) {
-                                stateDescription = if (store.subsPowerWarn) "已开启" else "已关闭"
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "耗电警告",
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = "启用多条订阅时弹窗确认",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Checkbox(
-                            checked = store.subsPowerWarn,
-                            onCheckedChange = null,
-                        )
-                    }
+                TextMenu(
+                    title = "更新订阅",
+                    option = UpdateTimeOption.objects.findOption(store.updateSubsInterval)
+                ) {
+                    storeFlow.update { s -> s.copy(updateSubsInterval = it.value) }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSettingsDlg = false }, modifier = Modifier.semantics {
-                    onClick(label = "关闭弹窗", action = null)
-                }) {
-                    Text("关闭")
-                }
+                TextSwitch(
+                    title = "耗电警告",
+                    subtitle = "启用多条订阅时弹窗确认",
+                    checked = store.subsPowerWarn,
+                    onCheckedChange = throttle<Boolean> {
+                        storeFlow.update { s -> s.copy(subsPowerWarn = it) }
+                    }
+                )
             }
         )
     }
@@ -233,12 +184,6 @@ fun useSubsManagePage(): ScaffoldExt {
                 ) {
                     Row {
                         if (it) {
-                            PerfIconButton(
-                                imageVector = PerfIcon.Share,
-                                contentDescription = "分享选中订阅",
-                                onClick = {
-                                    mainVm.showShareDataIdsFlow.value = selectedIds
-                                })
                             val canDeleteIds = if (selectedIds.contains(LOCAL_SUBS_ID)) {
                                 selectedIds - LOCAL_SUBS_ID
                             } else {
@@ -350,25 +295,6 @@ fun useSubsManagePage(): ScaffoldExt {
                                     }
                                 )
                             } else {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(text = "导入本地数据")
-                                    },
-                                    onClick = vm.viewModelScope.launchAsFn(Dispatchers.IO) {
-                                        expanded = false
-                                        val result =
-                                            context.launcher.launchForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                                addCategory(Intent.CATEGORY_OPENABLE)
-                                                type = "application/zip"
-                                            })
-                                        val uri = result.data?.data
-                                        if (uri == null) {
-                                            toast("未选择文件")
-                                            return@launchAsFn
-                                        }
-                                        importData(uri)
-                                    },
-                                )
                                 DropdownMenuItem(
                                     text = { Text(text = "添加应用规则") },
                                     onClick = throttle {

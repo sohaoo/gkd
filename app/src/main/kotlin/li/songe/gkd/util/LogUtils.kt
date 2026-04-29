@@ -13,7 +13,6 @@ import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.days
 
 object LogUtils {
-    @Loc
     fun d(
         vararg args: Any?,
         @Loc loc: String = "",
@@ -46,17 +45,19 @@ object LogUtils {
 
 private val logFileExecutor = Executors.newSingleThreadExecutor()
 private const val MAX_LOG_KEEP_DAYS = 7
-private val deviceInfoText by lazy {
-    val deviceInfos = listOf(
+val deviceInfoDesc by lazy {
+    listOf(
         android.os.Build.MANUFACTURER,
         android.os.Build.MODEL,
         DeviceBrand.getBrandName(),
         DeviceOs.getOsName() + DeviceOs.getOsVersionName() + DeviceOs.getOsBigVersionCode(),
         DeviceMarketName.getMarketName(app)
-    )
+    ).joinToString("/")
+}
+private val deviceInfoText by lazy {
     buildString {
         append("Android: ${android.os.Build.VERSION.RELEASE} (${android.os.Build.VERSION.SDK_INT})\n")
-        append("Device: ${deviceInfos.joinToString("/")}\n")
+        append("Device: ${deviceInfoDesc}\n")
         append("App: ${META.versionName} (${META.versionCode})\n")
     }
 }

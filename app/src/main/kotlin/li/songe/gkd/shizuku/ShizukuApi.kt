@@ -1,6 +1,7 @@
 package li.songe.gkd.shizuku
 
 
+import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import androidx.annotation.WorkerThread
@@ -30,7 +31,6 @@ import li.songe.gkd.util.toast
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
-import java.lang.reflect.Method
 import kotlin.system.exitProcess
 
 inline fun <T> safeInvokeShizuku(
@@ -52,34 +52,6 @@ class ShizukuOffException : IllegalStateException("Shizuku is off")
 
 fun getShizukuService(name: String): ShizukuBinderWrapper? {
     return SystemServiceHelper.getSystemService(name)?.let(::ShizukuBinderWrapper)
-}
-
-private fun Method.simpleString(): String {
-    return "${name}(${parameterTypes.joinToString(",") { it.name }}):${returnType.name}"
-}
-
-fun Class<*>.detectHiddenMethod(
-    methodName: String,
-    vararg args: Pair<Int, List<Class<*>>>,
-): Int {
-    val methodsVal = methods
-    methodsVal.forEach { method ->
-        if (method.name == methodName) {
-            val types = method.parameterTypes.toList()
-            args.forEach { (value, argTypes) ->
-                if (types == argTypes) {
-                    return value
-                }
-            }
-        }
-    }
-    val result = methodsVal.filter { it.name == methodName }
-    if (result.isEmpty()) {
-        throw NoSuchMethodException("${name}::${methodName} not found")
-    } else {
-        LogUtils.d("detectHiddenMethod", *result.map { it.simpleString() }.toTypedArray())
-        throw NoSuchMethodException("${name}::${methodName} not match")
-    }
 }
 
 // https://github.com/android-cs/16/blob/main/packages/Shell/AndroidManifest.xml
@@ -144,10 +116,23 @@ class ShizukuContext(
         return serviceWrapper?.tap(x, y, duration) ?: (inputManager?.tap(x, y, duration) != null)
     }
 
-    fun topCpn(): ComponentName? {
-        return (activityTaskManager?.getTasks()
-            ?: activityManager?.getTasks())?.firstOrNull()?.topActivity
+    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, duration: Long): Boolean {
+        return serviceWrapper?.swipe(x1, y1, x2, y2, duration) ?: (inputManager?.swipe(
+            x1,
+            y1,
+            x2,
+            y2,
+            duration
+        ) != null)
     }
+
+    fun getTasks(maxNum: Int = 1): List<ActivityManager.RunningTaskInfo> {
+        return activityTaskManager?.getTasks(maxNum)
+            ?: activityManager?.getTasks(maxNum)
+            ?: emptyList()
+    }
+
+    fun topCpn(): ComponentName? = getTasks().firstOrNull()?.topActivity
 
     init {
         if (activityTaskManager != null) {

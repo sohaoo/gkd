@@ -1,3 +1,4 @@
+import com.android.build.api.variant.impl.VariantOutputImpl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import kotlin.reflect.full.declaredMemberProperties
 
@@ -17,7 +18,9 @@ data class GitInfo(
     val commitId: String,
     val commitTime: String,
     val tagName: String?,
-)
+) {
+    val versionNameSuffix get() = if (tagName == null) ("-" + commitId.take(7)) else null
+}
 
 val gitInfo = GitInfo(
     commitId = "git rev-parse HEAD".runCommand(),
@@ -52,7 +55,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinx.atomicfu)
     alias(libs.plugins.google.ksp)
-    alias(libs.plugins.rikka.refine)
+    alias(libs.plugins.remap)
     alias(libs.plugins.loc)
 }
 
@@ -66,8 +69,8 @@ android {
         targetSdk = rootProject.ext["android.targetSdk"] as Int
 
         applicationId = "li.songe.gkd"
-        versionCode = 81
-        versionName = "1.11.6"
+        versionCode = 89
+        versionName = "1.12.0-beta.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -92,11 +95,15 @@ android {
         resValues = true
     }
 
-    val gkdSigningConfig = signingConfigs.create("gkd") {
-        storeFile = file(project.properties["GKD_STORE_FILE"] as String)
-        storePassword = project.properties["GKD_STORE_PASSWORD"].toString()
-        keyAlias = project.properties["GKD_KEY_ALIAS"].toString()
-        keyPassword = project.properties["GKD_KEY_PASSWORD"].toString()
+    val gkdSigningConfig = if (project.hasProperty("GKD_STORE_FILE")) {
+        signingConfigs.create("gkd") {
+            storeFile = file(project.properties["GKD_STORE_FILE"] as String)
+            storePassword = project.findProperty("GKD_STORE_PASSWORD")?.toString()
+            keyAlias = project.findProperty("GKD_KEY_ALIAS")?.toString()
+            keyPassword = project.findProperty("GKD_KEY_PASSWORD")?.toString()
+        }
+    } else {
+        signingConfigs.getByName("debug")
     }
 
     val playSigningConfig = if (project.hasProperty("PLAY_STORE_FILE")) {
@@ -112,9 +119,7 @@ android {
 
     buildTypes {
         all {
-            if (gitInfo.tagName == null) {
-                versionNameSuffix = "-${gitInfo.commitId.take(7)}"
-            }
+            versionNameSuffix = gitInfo.versionNameSuffix
         }
         release {
             isMinifyEnabled = true
@@ -168,6 +173,15 @@ android {
     )
 }
 
+if (project.hasProperty("GKD_RENAME_APK_FLAG")) {
+    androidComponents.onVariants { variant ->
+        variant.outputs.onEach { output ->
+            output as VariantOutputImpl
+            output.outputFileName = "gkd-v${output.versionName.get()}.apk"
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(rootProject.ext["kotlin.jvmTarget"] as JvmTarget)
@@ -183,6 +197,7 @@ kotlin {
             "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
             "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "-Xcontext-parameters",
+            "-Xexplicit-backing-fields",
             "-XXLanguage:+MultiDollarInterpolation",
         )
     }
@@ -229,7 +244,6 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation(libs.androidx.material3.adaptive.navigation3)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -273,6 +287,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network)
     implementation(libs.coil.gif)
+    implementation(libs.telephoto.zoomable)
 
     implementation(libs.exp4j)
 

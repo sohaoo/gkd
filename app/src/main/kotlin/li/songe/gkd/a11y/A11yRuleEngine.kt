@@ -3,6 +3,7 @@ package li.songe.gkd.a11y
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.util.Log
+import android.view.Display
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -14,6 +15,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import li.songe.gkd.META
@@ -32,6 +34,7 @@ import li.songe.gkd.shizuku.shizukuContextFlow
 import li.songe.gkd.shizuku.uiAutomationFlow
 import li.songe.gkd.store.actualBlockA11yAppList
 import li.songe.gkd.store.storeFlow
+import li.songe.gkd.util.AndroidTarget
 import li.songe.gkd.util.AutomatorModeOption
 import li.songe.gkd.util.launchTry
 import li.songe.gkd.util.runMainPost
@@ -42,7 +45,6 @@ import li.songe.selector.Selector
 import java.util.concurrent.Executors
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 
 private val eventDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -106,6 +108,8 @@ class A11yRuleEngine(val service: A11yCommonImpl) {
     fun onA11yEvent(event: AccessibilityEvent?) {
         if (!effective) return
         if (!event.isUseful()) return
+        // 拒绝副屏无障碍事件
+        if (AndroidTarget.TIRAMISU && event.displayId != Display.DEFAULT_DISPLAY) return
         onA11yFeatEvent(event)
         if (event.eventType == CONTENT_CHANGED) {
             if (!isInteractive) return // 屏幕关闭后仍然有无障碍事件 type:2048, time:8094, app:com.miui.aod, cls:android.widget.TextView
@@ -200,15 +204,21 @@ class A11yRuleEngine(val service: A11yCommonImpl) {
     }
 
     // 某些场景耗时 5000 ms
-    private suspend fun getTimeoutActiveWindow(): AccessibilityNodeInfo? = suspendCoroutine { s ->
-        val temp = atomic<Continuation<AccessibilityNodeInfo?>?>(s)
-        scope.launch(Dispatchers.IO) {
-            delay(500L)
-            temp.getAndUpdate { null }?.resume(null)
-        }
-        scope.launch(Dispatchers.IO) {
-            val a = safeActiveWindow
-            temp.getAndUpdate { null }?.resume(a)
+    private suspend fun getTimeoutActiveWindow(): AccessibilityNodeInfo? {
+        return suspendCancellableCoroutine { s ->
+            val temp = atomic<Continuation<AccessibilityNodeInfo?>?>(s)
+            scope.launch(Dispatchers.IO) {
+                delay(500L)
+                if (s.isActive) {
+                    temp.getAndUpdate { null }?.resume(null)
+                }
+            }
+            scope.launch(Dispatchers.IO) {
+                val a = safeActiveWindow
+                if (s.isActive) {
+                    temp.getAndUpdate { null }?.resume(a)
+                }
+            }
         }
     }
 
@@ -418,8 +428,9 @@ class A11yRuleEngine(val service: A11yCommonImpl) {
         }
 
         fun performActionBack(): Boolean {
-            return (shizukuContextFlow.value.inputManager?.key(KeyEvent.KEYCODE_BACK)
-                ?: A11yService.instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)) == true
+            val r1 = shizukuContextFlow.value.inputManager?.key(KeyEvent.KEYCODE_BACK)
+            if (r1 != null) return true
+            return A11yService.instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) == true
         }
 
         suspend fun screenshot(): Bitmap? = service?.screenshot()
@@ -435,8 +446,9 @@ class A11yRuleEngine(val service: A11yCommonImpl) {
                 a, selector, MatchOption(fastQuery = gkdAction.fastQuery)
             ) ?: throw RpcError("没有查询到节点")
             return withContext(Dispatchers.IO) {
-                ActionPerformer.getAction(gkdAction.action ?: ActionPerformer.None.action)
-                    .perform(targetNode, gkdAction.position)
+                ActionPerformer
+                    .getAction(gkdAction.action ?: ActionPerformer.None.action)
+                    .perform(targetNode, gkdAction)
             }
         }
 
